@@ -1,6 +1,6 @@
 use std::{
     path::Path,
-    sync::{atomic, Arc},
+    sync::{Arc, atomic},
     time::Duration,
 };
 

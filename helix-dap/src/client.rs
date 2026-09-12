@@ -1,8 +1,8 @@
 use crate::{
+    Error, ProgressMap, ProgressState, Result,
     registry::DebugAdapterId,
     requests::{DisconnectArguments, TerminateArguments},
     transport::{Payload, Request, Response, Transport},
-    Error, ProgressMap, ProgressState, Result,
 };
 use helix_core::syntax::config::{DebugAdapterConfig, DebuggerQuirks};
 use helix_dap_types::*;
@@ -22,7 +22,7 @@ use tokio::{
     io::{AsyncBufRead, AsyncWrite, BufReader, BufWriter},
     net::TcpStream,
     process::{Child, Command},
-    sync::mpsc::{channel, unbounded_channel, UnboundedReceiver, UnboundedSender},
+    sync::mpsc::{UnboundedReceiver, UnboundedSender, channel, unbounded_channel},
     time,
 };
 

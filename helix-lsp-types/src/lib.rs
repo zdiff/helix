@@ -22,7 +22,7 @@ use bitflags::bitflags;
 use std::{collections::HashMap, fmt::Debug};
 
 pub use helix_stdx::Url;
-use serde::{de, de::Error as Error_, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de, de::Error as Error_};
 use serde_json::Value;
 
 // Large enough to contain any enumeration name defined in this crate

@@ -1,20 +1,19 @@
 use crate::{
+    Call, Error, LanguageServerId, OffsetEncoding, Result,
     file_operations::FileOperationsInterest,
     find_lsp_workspace, jsonrpc,
     transport::{Payload, Transport},
-    Call, Error, LanguageServerId, OffsetEncoding, Result,
 };
 use log::info;
 
 use crate::lsp::{
-    self, notification::DidChangeWorkspaceFolders, CodeActionCapabilityResolveSupport,
-    DidChangeWorkspaceFoldersParams, OneOf, PositionEncodingKind, SignatureHelp, Url,
-    WorkspaceFolder, WorkspaceFoldersChangeEvent,
+    self, CodeActionCapabilityResolveSupport, DidChangeWorkspaceFoldersParams, OneOf,
+    PositionEncodingKind, SignatureHelp, Url, WorkspaceFolder, WorkspaceFoldersChangeEvent,
+    notification::DidChangeWorkspaceFolders,
 };
 use helix_core::{
-    find_workspace,
+    ChangeSet, Rope, find_workspace,
     syntax::config::{LanguageServerFeature, RootMarkers},
-    ChangeSet, Rope,
 };
 use helix_loader::VERSION_AND_GIT_HASH;
 use helix_stdx::path;
@@ -25,8 +24,8 @@ use std::{collections::HashMap, path::PathBuf};
 use std::{
     ffi::OsStr,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 use std::{future::Future, sync::OnceLock};
@@ -35,8 +34,8 @@ use tokio::{
     io::{BufReader, BufWriter},
     process::{Child, Command},
     sync::{
-        mpsc::{channel, UnboundedReceiver, UnboundedSender},
         Notify, OnceCell,
+        mpsc::{UnboundedReceiver, UnboundedSender, channel},
     },
 };
 
@@ -419,9 +418,11 @@ impl Client {
                 "utf-16" => Some(OffsetEncoding::Utf16),
                 "utf-32" => Some(OffsetEncoding::Utf32),
                 encoding => {
-                    log::error!("Server provided invalid position encoding {encoding}, defaulting to utf-16");
+                    log::error!(
+                        "Server provided invalid position encoding {encoding}, defaulting to utf-16"
+                    );
                     None
-                },
+                }
             })
             .unwrap_or_default()
     }
@@ -1449,9 +1450,9 @@ impl Client {
 
     fn goto_request<
         T: lsp::request::Request<
-            Params = lsp::GotoDefinitionParams,
-            Result = Option<lsp::GotoDefinitionResponse>,
-        >,
+                Params = lsp::GotoDefinitionParams,
+                Result = Option<lsp::GotoDefinitionResponse>,
+            >,
     >(
         &self,
         text_document: lsp::TextDocumentIdentifier,
