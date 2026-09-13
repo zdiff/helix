@@ -44,11 +44,11 @@ impl KeyTrieNode {
     /// subnodes for same key. In that case the merge is recursive.
     pub fn merge(&mut self, mut other: Self) {
         for (key, trie) in std::mem::take(&mut other.map) {
-            if let Some(KeyTrie::Node(node)) = self.map.get_mut(&key) {
-                if let KeyTrie::Node(other_node) = trie {
-                    node.merge(other_node);
-                    continue;
-                }
+            if let Some(KeyTrie::Node(node)) = self.map.get_mut(&key)
+                && let KeyTrie::Node(other_node) = trie
+            {
+                node.merge(other_node);
+                continue;
             }
             self.map.insert(key, trie);
         }
@@ -312,7 +312,7 @@ impl Keymaps {
         if key!(Esc) == key {
             if !self.state.is_empty() {
                 // Note that Esc is not included here
-                return KeymapResult::Cancelled(self.state.drain(..).collect());
+                return KeymapResult::Cancelled(std::mem::take(&mut self.state));
             }
             self.sticky = None;
         }
@@ -324,10 +324,10 @@ impl Keymaps {
         };
 
         let trie = match trie_node.search(&[*first]) {
-            Some(KeyTrie::MappableCommand(ref cmd)) => {
+            Some(KeyTrie::MappableCommand(cmd)) => {
                 return KeymapResult::Matched(cmd.clone());
             }
-            Some(KeyTrie::Sequence(ref cmds)) => {
+            Some(KeyTrie::Sequence(cmds)) => {
                 return KeymapResult::MatchedSequence(cmds.clone());
             }
             None => return KeymapResult::NotFound,
@@ -351,7 +351,7 @@ impl Keymaps {
                 self.state.clear();
                 KeymapResult::MatchedSequence(cmds.clone())
             }
-            None => KeymapResult::Cancelled(self.state.drain(..).collect()),
+            None => KeymapResult::Cancelled(std::mem::take(&mut self.state)),
         }
     }
 }

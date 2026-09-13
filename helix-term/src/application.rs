@@ -1162,15 +1162,13 @@ impl Application {
                                     };
                                     if let Some(language_server) =
                                         editor.language_server_by_id(server_id)
-                                    {
-                                        if let Err(err) =
+                                        && let Err(err) =
                                             language_server.reply(id.clone(), Ok(json!(reply)))
-                                        {
-                                            log::error!(
-                                                "Failed to send reply to server '{}' request {id}: {err}",
-                                                language_server.name()
-                                            );
-                                        }
+                                    {
+                                        log::error!(
+                                            "Failed to send reply to server '{}' request {id}: {err}",
+                                            language_server.name()
+                                        );
                                     }
                                 },
                             );
@@ -1289,7 +1287,9 @@ impl Application {
     }
 
     #[cfg(all(not(feature = "integration"), not(windows)))]
-    pub fn event_stream(&self) -> impl Stream<Item = std::io::Result<TerminalEvent>> + Unpin {
+    pub fn event_stream(
+        &self,
+    ) -> impl Stream<Item = std::io::Result<TerminalEvent>> + Unpin + use<> {
         use termina::{Terminal as _, escape::csi};
         let reader = self.terminal.backend().terminal().event_reader();
         termina::EventStream::new(reader, |event| {
@@ -1303,12 +1303,16 @@ impl Application {
     }
 
     #[cfg(all(not(feature = "integration"), windows))]
-    pub fn event_stream(&self) -> impl Stream<Item = std::io::Result<TerminalEvent>> + Unpin {
+    pub fn event_stream(
+        &self,
+    ) -> impl Stream<Item = std::io::Result<TerminalEvent>> + Unpin + use<> {
         crossterm::event::EventStream::new()
     }
 
     #[cfg(feature = "integration")]
-    pub fn event_stream(&self) -> impl Stream<Item = std::io::Result<TerminalEvent>> + Unpin {
+    pub fn event_stream(
+        &self,
+    ) -> impl Stream<Item = std::io::Result<TerminalEvent>> + Unpin + use<> {
         use std::{
             pin::Pin,
             task::{Context, Poll},
