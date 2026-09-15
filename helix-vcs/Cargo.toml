@@ -17,7 +17,7 @@ tokio = { version = "1", default-features = false }
 parking_lot.workspace = true
 arc-swap.workspace = true
 
-gix = { version = "0.87.0", default-features = false, optional = true }
+gix = { version = "0.87.0", default-features = false, features = ["sha256", "status"], optional = true }
 imara-diff = { default-features = false, version = "0.2.0" }
 anyhow = { default-features = false, version = "1" }
 

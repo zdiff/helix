@@ -6649,7 +6649,7 @@ async fn shell_impl_async(
         String::from_utf8_lossy(&output.stdout)
     };
 
-    Ok(Tendril::from(output))
+    Ok(Tendril::from(output.as_ref()))
 }
 
 fn shell(cx: &mut compositor::Context, cmd: &str, behavior: &ShellBehavior) {
