@@ -15,7 +15,6 @@ use helix_core::text_annotations::{InlineAnnotation, Overlay};
 use helix_event::TaskController;
 use helix_lsp::util::lsp_pos_to_pos;
 use helix_stdx::faccess::{copy_metadata, readonly};
-use helix_vcs::{DiffHandle, DiffProviderRegistry};
 use once_cell::sync::OnceCell;
 use thiserror;
 
@@ -205,9 +204,6 @@ pub struct Document {
 
     pub(crate) diagnostics: Vec<Diagnostic>,
     pub(crate) language_servers: HashMap<LanguageServerName, Arc<Client>>,
-
-    diff_handle: Option<DiffHandle>,
-    version_control_head: Option<Arc<ArcSwap<Box<str>>>>,
 
     // when document was used for most-recent-used buffer picker
     pub focused_at: std::time::Instant,
@@ -759,9 +755,7 @@ impl Document {
             last_saved_revision: 0,
             modified_since_accessed: false,
             language_servers: HashMap::new(),
-            diff_handle: None,
             config,
-            version_control_head: None,
             focused_at: std::time::Instant::now(),
             readonly: false,
             jump_labels: HashMap::new(),
@@ -1285,12 +1279,7 @@ impl Document {
     }
 
     /// Reload the document from its path.
-    pub fn reload(
-        &mut self,
-        view: &mut View,
-        provider_registry: &DiffProviderRegistry,
-        trust_full: bool,
-    ) -> Result<(), Error> {
+    pub fn reload(&mut self, view: &mut View) -> Result<(), Error> {
         let encoding = self.encoding;
         let path = match self.path() {
             None => return Ok(()),
@@ -1315,13 +1304,6 @@ impl Document {
         self.reset_modified();
         self.pickup_last_saved_time();
         self.detect_indent_and_line_ending();
-
-        match provider_registry.get_diff_base(&path, trust_full) {
-            Some(diff_base) => self.set_diff_base(diff_base),
-            None => self.diff_handle = None,
-        }
-
-        self.version_control_head = provider_registry.get_current_head_name(&path, trust_full);
 
         Ok(())
     }
@@ -1531,11 +1513,6 @@ impl Document {
         }
 
         // TODO: all of that should likely just be hooks
-        // start computing the diff in parallel
-        if let Some(diff_handle) = &self.diff_handle {
-            diff_handle.update_document(self.text.clone(), false);
-        }
-
         // map diagnostics over changes too
         changes.update_positions(self.diagnostics.iter_mut().map(|diagnostic| {
             let assoc = if diagnostic.starts_at_word {
@@ -1985,34 +1962,6 @@ impl Document {
         self.language_config()
             .map(|lang| !lang.language_servers.is_empty() || lang.debugger.is_some())
             .unwrap_or(false)
-    }
-
-    pub fn diff_handle(&self) -> Option<&DiffHandle> {
-        self.diff_handle.as_ref()
-    }
-
-    /// Intialize/updates the differ for this document with a new base.
-    pub fn set_diff_base(&mut self, diff_base: Vec<u8>) {
-        if let Ok((diff_base, ..)) = from_reader(&mut diff_base.as_slice(), Some(self.encoding)) {
-            if let Some(differ) = &self.diff_handle {
-                differ.update_diff_base(diff_base);
-                return;
-            }
-            self.diff_handle = Some(DiffHandle::new(diff_base, self.text.clone()))
-        } else {
-            self.diff_handle = None;
-        }
-    }
-
-    pub fn version_control_head(&self) -> Option<Arc<Box<str>>> {
-        self.version_control_head.as_ref().map(|a| a.load_full())
-    }
-
-    pub fn set_version_control_head(
-        &mut self,
-        version_control_head: Option<Arc<ArcSwap<Box<str>>>>,
-    ) {
-        self.version_control_head = version_control_head;
     }
 
     #[inline]

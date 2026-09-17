@@ -31,7 +31,6 @@ impl GutterType {
             }
             GutterType::LineNumbers => line_numbers(editor, doc, view, theme, is_focused),
             GutterType::Spacer => padding(editor, doc, view, theme, is_focused),
-            GutterType::Diff => diff(editor, doc, view, theme, is_focused),
             GutterType::CodeActionHint => code_action_hint(editor, doc, view, theme, is_focused),
         }
     }
@@ -41,7 +40,6 @@ impl GutterType {
             GutterType::Diagnostics => 1,
             GutterType::LineNumbers => line_numbers_width(view, doc),
             GutterType::Spacer => 1,
-            GutterType::Diff => 1,
             GutterType::CodeActionHint => 1,
         }
     }
@@ -87,58 +85,6 @@ pub fn diagnostic<'doc>(
             })
         },
     )
-}
-
-pub fn diff<'doc>(
-    _editor: &'doc Editor,
-    doc: &'doc Document,
-    _view: &View,
-    theme: &Theme,
-    _is_focused: bool,
-) -> GutterFn<'doc> {
-    let added = theme.get("diff.plus.gutter");
-    let deleted = theme.get("diff.minus.gutter");
-    let modified = theme.get("diff.delta.gutter");
-    if let Some(diff_handle) = doc.diff_handle() {
-        let hunks = diff_handle.load();
-        let mut hunk_i = 0;
-        let mut hunk = hunks.nth_hunk(hunk_i);
-        Box::new(
-            move |line: usize, _selected: bool, first_visual_line: bool, out: &mut String| {
-                // truncating the line is fine here because we don't compute diffs
-                // for files with more lines than i32::MAX anyways
-                // we need to special case removals here
-                // these technically do not have a range of lines to highlight (`hunk.after.start == hunk.after.end`).
-                // However we still want to display these hunks correctly we must not yet skip to the next hunk here
-                while hunk.after.end < line as u32
-                    || !hunk.is_pure_removal() && line as u32 == hunk.after.end
-                {
-                    hunk_i += 1;
-                    hunk = hunks.nth_hunk(hunk_i);
-                }
-
-                if hunk.after.start > line as u32 {
-                    return None;
-                }
-
-                let (icon, style) = if hunk.is_pure_insertion() {
-                    ("▍", added)
-                } else if hunk.is_pure_removal() {
-                    if !first_visual_line {
-                        return None;
-                    }
-                    ("▔", deleted)
-                } else {
-                    ("▍", modified)
-                };
-
-                write!(out, "{}", icon).unwrap();
-                Some(style)
-            },
-        )
-    } else {
-        Box::new(move |_, _, _, _| None)
-    }
 }
 
 pub fn line_numbers<'doc>(

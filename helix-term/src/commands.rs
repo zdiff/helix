@@ -10,7 +10,6 @@ use helix_stdx::{
     path::{self, find_paths},
     rope::{self, RopeSliceExt},
 };
-use helix_vcs::{FileChange, Hunk};
 pub use lsp::*;
 pub use syntax::*;
 use tui::{
@@ -74,7 +73,6 @@ use std::{
     char::{ToLowercase, ToUppercase},
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    error::Error,
     fmt,
     future::Future,
     io::Read,
@@ -412,7 +410,6 @@ impl MappableCommand {
         symbol_picker, "Open symbol picker",
         syntax_symbol_picker, "Open symbol picker from syntax information",
         lsp_or_syntax_symbol_picker, "Open symbol picker from LSP or syntax information",
-        changed_file_picker, "Open changed file picker",
         select_references_to_symbol_under_cursor, "Select symbol references",
         workspace_symbol_picker, "Open workspace symbol picker",
         syntax_workspace_symbol_picker, "Open workspace symbol picker from syntax information",
@@ -454,10 +451,6 @@ impl MappableCommand {
         goto_last_diag, "Goto last diagnostic",
         goto_next_diag, "Goto next diagnostic",
         goto_prev_diag, "Goto previous diagnostic",
-        goto_next_change, "Goto next change",
-        goto_prev_change, "Goto previous change",
-        goto_first_change, "Goto first change",
-        goto_last_change, "Goto last change",
         goto_line_start, "Goto line start",
         goto_line_end, "Goto line end",
         goto_column, "Goto column",
@@ -3479,108 +3472,6 @@ fn jumplist_picker(cx: &mut Context) {
     cx.push_layer(Box::new(overlaid(picker)));
 }
 
-fn changed_file_picker(cx: &mut Context) {
-    pub struct FileChangeData {
-        cwd: PathBuf,
-        style_untracked: Style,
-        style_modified: Style,
-        style_conflict: Style,
-        style_deleted: Style,
-        style_renamed: Style,
-    }
-
-    let cwd = helix_stdx::env::current_working_dir();
-    if !cwd.exists() {
-        cx.editor
-            .set_error("Current working directory does not exist");
-        return;
-    }
-
-    let added = cx.editor.theme.get("diff.plus");
-    let modified = cx.editor.theme.get("diff.delta");
-    let conflict = cx.editor.theme.get("diff.delta.conflict");
-    let deleted = cx.editor.theme.get("diff.minus");
-    let renamed = cx.editor.theme.get("diff.delta.moved");
-
-    let columns = [
-        PickerColumn::new("change", |change: &FileChange, data: &FileChangeData| {
-            match change {
-                FileChange::Untracked { .. } => Span::styled("+ untracked", data.style_untracked),
-                FileChange::Modified { .. } => Span::styled("~ modified", data.style_modified),
-                FileChange::Conflict { .. } => Span::styled("x conflict", data.style_conflict),
-                FileChange::Deleted { .. } => Span::styled("- deleted", data.style_deleted),
-                FileChange::Renamed { .. } => Span::styled("> renamed", data.style_renamed),
-            }
-            .into()
-        }),
-        PickerColumn::new("path", |change: &FileChange, data: &FileChangeData| {
-            let display_path = |path: &PathBuf| {
-                path.strip_prefix(&data.cwd)
-                    .unwrap_or(path)
-                    .display()
-                    .to_string()
-            };
-            match change {
-                FileChange::Untracked { path } => display_path(path),
-                FileChange::Modified { path } => display_path(path),
-                FileChange::Conflict { path } => display_path(path),
-                FileChange::Deleted { path } => display_path(path),
-                FileChange::Renamed { from_path, to_path } => {
-                    format!("{} -> {}", display_path(from_path), display_path(to_path))
-                }
-            }
-            .into()
-        }),
-    ];
-
-    let picker = Picker::new(
-        columns,
-        1, // path
-        [],
-        FileChangeData {
-            cwd: cwd.clone(),
-            style_untracked: added,
-            style_modified: modified,
-            style_conflict: conflict,
-            style_deleted: deleted,
-            style_renamed: renamed,
-        },
-        |cx, meta: &FileChange, action| {
-            let path_to_open = meta.path();
-            if let Err(e) = cx.editor.open(path_to_open, action) {
-                let err = if let Some(err) = e.source() {
-                    format!("{}", err)
-                } else {
-                    format!("unable to open \"{}\"", path_to_open.display())
-                };
-                cx.editor.set_error(err);
-            }
-        },
-    )
-    .with_preview(|_editor, meta| Some((meta.path().into(), None)));
-    let injector = picker.injector();
-
-    let trust_full = cx
-        .editor
-        .workspace_trust
-        .query(
-            &helix_loader::find_workspace_in(&cwd).0,
-            helix_loader::workspace_trust::TrustQuery::Git,
-        )
-        .is_trusted();
-    cx.editor
-        .diff_providers
-        .clone()
-        .for_each_changed_file(cwd, trust_full, move |change| match change {
-            Ok(change) => injector.push(change).is_ok(),
-            Err(err) => {
-                status::report_blocking(err);
-                true
-            }
-        });
-    cx.push_layer(Box::new(overlaid(picker)));
-}
-
 pub fn command_palette(cx: &mut Context) {
     let register = cx.register;
     let count = cx.count;
@@ -4221,105 +4112,6 @@ fn goto_prev_diag(cx: &mut Context) {
             .immediately_show_diagnostic(doc, view.id);
     };
     cx.editor.apply_motion(motion)
-}
-
-fn goto_first_change(cx: &mut Context) {
-    goto_first_change_impl(cx, false);
-}
-
-fn goto_last_change(cx: &mut Context) {
-    goto_first_change_impl(cx, true);
-}
-
-fn goto_first_change_impl(cx: &mut Context, reverse: bool) {
-    let editor = &mut cx.editor;
-    let (view, doc) = current!(editor);
-    if let Some(handle) = doc.diff_handle() {
-        let hunk = {
-            let diff = handle.load();
-            let idx = if reverse {
-                diff.len().saturating_sub(1)
-            } else {
-                0
-            };
-            diff.nth_hunk(idx)
-        };
-        if hunk != Hunk::NONE {
-            let range = hunk_range(hunk, doc.text().slice(..));
-            push_jump(view, doc);
-            doc.set_selection(view.id, Selection::single(range.anchor, range.head));
-        }
-    }
-}
-
-fn goto_next_change(cx: &mut Context) {
-    goto_next_change_impl(cx, Direction::Forward)
-}
-
-fn goto_prev_change(cx: &mut Context) {
-    goto_next_change_impl(cx, Direction::Backward)
-}
-
-fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
-    let count = cx.count() as u32 - 1;
-    let motion = move |editor: &mut Editor| {
-        let (view, doc) = current!(editor);
-        let doc_text = doc.text().slice(..);
-        let diff_handle = if let Some(diff_handle) = doc.diff_handle() {
-            diff_handle
-        } else {
-            editor.set_status("Diff is not available in current buffer");
-            return;
-        };
-
-        let selection = doc.selection(view.id).clone().transform(|range| {
-            let cursor_line = range.cursor_line(doc_text) as u32;
-
-            let diff = diff_handle.load();
-            let hunk_idx = match direction {
-                Direction::Forward => diff
-                    .next_hunk(cursor_line)
-                    .map(|idx| (idx + count).min(diff.len() - 1)),
-                Direction::Backward => diff
-                    .prev_hunk(cursor_line)
-                    .map(|idx| idx.saturating_sub(count)),
-            };
-            let Some(hunk_idx) = hunk_idx else {
-                return range;
-            };
-            let hunk = diff.nth_hunk(hunk_idx);
-            let new_range = hunk_range(hunk, doc_text);
-            if editor.mode == Mode::Select {
-                let head = if new_range.head < range.anchor {
-                    new_range.anchor
-                } else {
-                    new_range.head
-                };
-
-                Range::new(range.anchor, head)
-            } else {
-                new_range.with_direction(direction)
-            }
-        });
-
-        push_jump(view, doc);
-        doc.set_selection(view.id, selection)
-    };
-    cx.editor.apply_motion(motion);
-}
-
-/// Returns the [Range] for a [Hunk] in the given text.
-/// Additions and modifications cover the added and modified ranges.
-/// Deletions are represented as the point at the start of the deletion hunk.
-fn hunk_range(hunk: Hunk, text: RopeSlice) -> Range {
-    let anchor = text.line_to_char(hunk.after.start as usize);
-    let head = if hunk.after.is_empty() {
-        anchor + 1
-    } else {
-        text.line_to_char(hunk.after.end as usize)
-    };
-
-    Range::new(anchor, head)
 }
 
 pub mod insert {
@@ -6279,27 +6071,6 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                     )
                 };
 
-                if ch == 'g' && doc.diff_handle().is_none() {
-                    editor.set_status("Diff is not available in current buffer");
-                    return;
-                }
-
-                let textobject_change = |range: Range| -> Range {
-                    let diff_handle = doc.diff_handle().unwrap();
-                    let diff = diff_handle.load();
-                    let line = range.cursor_line(text);
-                    let hunk_idx = if let Some(hunk_idx) = diff.hunk_at(line as u32, false) {
-                        hunk_idx
-                    } else {
-                        return range;
-                    };
-                    let hunk = diff.nth_hunk(hunk_idx).after;
-
-                    let start = text.line_to_char(hunk.start as usize);
-                    let end = text.line_to_char(hunk.end as usize);
-                    Range::new(start, end).with_direction(range.direction())
-                };
-
                 let selection = doc.selection(view.id).clone().transform(|range| {
                     match ch {
                         'w' => textobject::textobject_word(text, range, objtype, count, false),
@@ -6319,7 +6090,6 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                             objtype,
                             count,
                         ),
-                        'g' => textobject_change(range),
                         // TODO: cancel new ranges if inconsistent surround matches across lines
                         ch if !ch.is_ascii_alphanumeric() => textobject::textobject_pair_surround(
                             doc.syntax(),
@@ -6354,7 +6124,6 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
         ("T", "Test (tree-sitter)"),
         ("e", "Data structure entry (tree-sitter)"),
         ("m", "Closest surrounding pair (tree-sitter)"),
-        ("g", "Change"),
         ("x", "(X)HTML element (tree-sitter)"),
         (" ", "... or any character acting as a pair"),
     ];
