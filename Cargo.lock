@@ -690,34 +690,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "helix-dap"
-version = "25.7.1"
-dependencies = [
- "anyhow",
- "futures-executor",
- "futures-util",
- "helix-core",
- "helix-dap-types",
- "helix-stdx",
- "log",
- "serde",
- "serde_json",
- "slotmap",
- "sonic-rs",
- "thiserror",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
-name = "helix-dap-types"
-version = "25.7.1"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "helix-event"
 version = "25.7.1"
 dependencies = [
@@ -823,7 +795,6 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "helix-core",
- "helix-dap",
  "helix-event",
  "helix-loader",
  "helix-lsp",
@@ -886,7 +857,6 @@ dependencies = [
  "foldhash 0.2.0",
  "futures-util",
  "helix-core",
- "helix-dap",
  "helix-event",
  "helix-loader",
  "helix-lsp",
